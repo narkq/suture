@@ -611,6 +611,37 @@ func TestRemoveAndWait(t *testing.T) {
 	}
 }
 
+func TestStopAfterRemoveAndWait(t *testing.T) {
+	t.Parallel()
+
+	var badStopError error
+
+	s := NewSimple("main")
+	s.timeout = time.Second
+	s.LogBadStop = func(sup *Supervisor, _ Service, name string) {
+		badStopError = fmt.Errorf("%s: Service %s failed to terminate in a timely manner", sup.Name, name)
+	}
+	s.ServeBackground()
+
+	service := NewService("A1")
+	token := s.Add(service)
+
+	<-service.started
+	service.take <- UseStopChan
+
+	err := s.RemoveAndWait(token, time.Second)
+	if err != nil {
+		t.Fatal("Happy case for RemoveAndWait failed: " + err.Error())
+	}
+	<-service.stop
+
+	s.Stop()
+
+	if badStopError != nil {
+		t.Fatal("Unexpected timeout while stopping supervisor: " + badStopError.Error())
+	}
+}
+
 func TestCoverage(t *testing.T) {
 	New("testing coverage", Spec{
 		LogBadStop: func(*Supervisor, Service, string) {},
